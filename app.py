@@ -7,7 +7,7 @@ import streamlit as st
 
 from process_functions import monetizacion_v0 as mon
 
-# --- RUTAS PORTABLES (sin depender de Windows) ---
+
 BASE_DIR = Path(__file__).parent
 SEED_DIR = BASE_DIR / "seed_data"
 
@@ -32,6 +32,7 @@ HISTORIAL_PAYOUT_PATH = DATA_DIR / "airbnb_payouts_historico.csv"
 HISTORIAL_MONETIZACION_PATH = DATA_DIR / "monetizaciones.csv"
 
 st.title("Monetizaciones")
+
 
 CUENTAS = ['PRINCIPAL', 'RH', 'COLONIA', 'BOULERVARD']
 
@@ -140,7 +141,7 @@ with st.expander("Solo para Stripe"):
 
 # ----------------- EDITAR id_accival -----------------
 st.subheader("Transacciones pendientes de monetización")
-st.help("El campo de ID accival es el que se tiene que actualizar cuando esa transacción se ha monetizado")
+st.caption("El campo de ID accival  se tiene que actualizar cuando esa transacción se ha monetizado, con el id correspondiente")
 
 payouts['id_accival'] = payouts['id_accival'].astype(str)
 
@@ -205,19 +206,26 @@ monet.to_csv(HISTORIAL_MONETIZACION_PATH, index=False)
 
 # ----------------- LISTADO Y EDICIÓN DE MONETIZACIONES -----------------
 st.subheader("Registro histórico de monetizaciones")
-st.help("aquí se debe actualizar con información adicional cuando se accival envía la liquidacion")
+st.caption("Aquí se debe actualizar con información adicional cuando se accival envía la liquidacion")
+monet = monet.sort_values("fecha", ascending=False).reset_index(drop=True)
 st.dataframe(monet)
 
-monet = monet.sort_values("fecha", ascending=False).reset_index(drop=True)
+sin_fecha = monet[
+    monet["fecha"].isna() | (monet["fecha"].astype(str).str.strip() == "")
+].copy()
+
 
 monet_editado = st.data_editor(
-    monet,
+    sin_fecha,
     num_rows="fixed"
 )
-monet = monet_editado.copy()
+
 
 if st.button("Guardar cambios monetizaciones"):
-    monet.to_csv(HISTORIAL_MONETIZACION_PATH, index=False)
+    monet_updated = monet.copy()
+    for idx, row in monet_editado.iterrows():
+        monet_updated.loc[idx] = row
+    monet_updated.to_csv(HISTORIAL_MONETIZACION_PATH, index=False)
     st.success("Cambios en monetizaciones guardados correctamente.")
 
 # ----------------- MÉTRICAS Y RESÚMENES -----------------
