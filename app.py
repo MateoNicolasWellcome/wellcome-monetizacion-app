@@ -309,6 +309,19 @@ else:
 
 st.subheader("Payouts")
 st.dataframe(payouts)
+editable_cols = ["id_accival"]
+
+payouts_editado = st.data_editor(
+    payouts,
+    disabled=[col for col in payouts.columns if col not in editable_cols],
+    num_rows="fixed"
+)
+
+if st.button("Guardar cambios (Payouts)"):
+    payouts_editado.to_csv(HISTORIAL_PAYOUT_PATH, index=False)
+    st.success("Cambios en payouts guardados correctamente.")
+
+st.data_editor(payouts)
 
 st.line_chart(monet, x="fecha", y=["trm", "trm_dia"])
 st.line_chart(monet, x="fecha", y="monto_usd")
