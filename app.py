@@ -1,6 +1,6 @@
 import io
 from pathlib import Path
-
+import shutil
 from babel.numbers import format_currency
 import pandas as pd
 import streamlit as st
@@ -9,7 +9,23 @@ from process_functions import monetizacion_v0 as mon
 
 # --- RUTAS PORTABLES (sin depender de Windows) ---
 BASE_DIR = Path(__file__).parent
-DATA_DIR = BASE_DIR / "data"
+SEED_DIR = BASE_DIR / "seed_data"
+
+DATA_DIR = Path("/app/data")
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+CSV_FILES = [
+    "airbnb_reservations_paid_historico.csv",
+    "airbnb_payouts_historico.csv",
+    "monetizaciones.csv",
+]
+
+# Si el volumen está vacío, copiamos los CSV semilla una sola vez
+for fname in CSV_FILES:
+    dst = DATA_DIR / fname
+    if not dst.exists():
+        src = SEED_DIR / fname
+        if src.exists():
+            shutil.copy(src, dst)
 
 HISTORIAL_PATH = DATA_DIR / "airbnb_reservations_paid_historico.csv"
 HISTORIAL_PAYOUT_PATH = DATA_DIR / "airbnb_payouts_historico.csv"
