@@ -5,7 +5,7 @@ from babel.numbers import format_currency
 import pandas as pd
 import streamlit as st
 
-from pages import monetizacion_v0 as mon
+from process_functions import monetizacion_v0 as mon
 
 # --- RUTAS PORTABLES (sin depender de Windows) ---
 BASE_DIR = Path(__file__).parent
