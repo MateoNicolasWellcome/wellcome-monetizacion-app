@@ -139,7 +139,8 @@ with st.expander("Solo para Stripe"):
             )
 
 # ----------------- EDITAR id_accival -----------------
-"historico de payouts"
+st.subheader("Transacciones pendientes de monetización")
+st.help("El campo de ID accival es el que se tiene que actualizar cuando esa transacción se ha monetizado")
 
 payouts['id_accival'] = payouts['id_accival'].astype(str)
 
@@ -203,7 +204,8 @@ if "fecha" in monet.columns:
 monet.to_csv(HISTORIAL_MONETIZACION_PATH, index=False)
 
 # ----------------- LISTADO Y EDICIÓN DE MONETIZACIONES -----------------
-st.subheader("Listado de monetizaciones")
+st.subheader("Registro histórico de monetizaciones")
+st.help("aquí se debe actualizar con información adicional cuando se accival envía la liquidacion")
 st.dataframe(monet)
 
 monet = monet.sort_values("fecha", ascending=False).reset_index(drop=True)
@@ -251,7 +253,7 @@ df_mensual['costo'] = df_mensual['costo'].apply(
 
 df_merged = pd.merge(df_mensual, accival_trans, on='fecha', how='left')
 df_merged_f = pd.merge(df_merged, avg_trm_month, on='fecha', how='left')
-
+st.header("Historico Mensual")
 st.write(df_merged_f)
 st.caption("Monetizaciones desde Mayo 2025")
 
@@ -308,21 +310,23 @@ else:
     st.info("No hay filas con 'pre_accival' para exportar.")
 
 st.subheader("Payouts")
+st.caption("Listado de todos los payouts enviados con su id de la monetización de Accival")
 st.dataframe(payouts)
-editable_cols = ["id_accival"]
 
-payouts_editado = st.data_editor(
-    payouts,
-    disabled=[col for col in payouts.columns if col not in editable_cols],
-    num_rows="fixed"
-)
+with st.expander("Cambios en caso de error para Payouts"):
+    editable_cols = ["id_accival"]
 
-if st.button("Guardar cambios (Payouts)"):
-    payouts_editado.to_csv(HISTORIAL_PAYOUT_PATH, index=False)
-    st.success("Cambios en payouts guardados correctamente.")
+    payouts_editado = st.data_editor(
+        payouts,
+        disabled=[col for col in payouts.columns if col not in editable_cols],
+        num_rows="fixed"
+    )
 
-st.data_editor(payouts)
+    if st.button("Guardar cambios (Payouts)"):
+        payouts_editado.to_csv(HISTORIAL_PAYOUT_PATH, index=False)
+        st.success("Cambios en payouts guardados correctamente.")
 
+st.subheader("Gráficas de comportamiento a traves del tiempo")
 st.line_chart(monet, x="fecha", y=["trm", "trm_dia"])
 st.line_chart(monet, x="fecha", y="monto_usd")
 st.bar_chart(monet, x="fecha", y="monto_cop")
