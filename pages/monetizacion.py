@@ -8,7 +8,7 @@ import streamlit as st
 from process_functions import monetizacion_v0 as mon
 
 
-BASE_DIR = Path(__file__).parent[1]
+BASE_DIR = Path(__file__).parents[1]
 SEED_DIR = BASE_DIR / "seed_data"
 DATA_DIR = Path("/app/data")
 
