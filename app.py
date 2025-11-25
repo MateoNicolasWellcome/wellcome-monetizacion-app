@@ -11,6 +11,7 @@ BASE_DIR = Path(__file__).parent
 
 PAGES = {
     "Monetización": "monetizacion",
+    "Contabilidad": "contabilidad"
 }
 
 
