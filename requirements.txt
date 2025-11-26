@@ -3,3 +3,4 @@ pandas
 babel
 openpyxl
 numpy
+XlsxWriter
