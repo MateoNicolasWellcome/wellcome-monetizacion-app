@@ -218,11 +218,14 @@ def run():
     st.caption("Cuidado: excluir PO y revisar pagos parciales del mes anterior")
 
     df_sin_po = df[df['chargeCode'] != 'PO'].copy()
-
-    pago = df_sin_po.groupby(['ownerName', 'listingNickname'], as_index=False)['amount'].sum()
+    pago = df_sin_po.groupby('ownerName', as_index=False).agg({
+        'amount': 'sum',  # Sumamos el total
+        'listingNickname': lambda x: ', '.join(x.unique())  # Concatenamos los nombres sin repetir
+    })
+    # pago = df_sin_po.groupby(['ownerName', 'listingNickname'], as_index=False)['amount'].sum()
     pago['A_Transferir'] = pago['amount'].abs().round(2)
     pago_final = pago[pago['A_Transferir'] > 0][['ownerName','listingNickname','A_Transferir']]
-    pago_final = pago_final.sort_values(['ownerName', 'listingNickname']).reset_index(drop=True)
+    pago_final = pago_final.sort_values('ownerName').reset_index(drop=True)
 
     st.dataframe(pago_final, use_container_width=True)
 
