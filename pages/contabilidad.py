@@ -220,9 +220,9 @@ def run():
     df_sin_po = df[df['chargeCode'] != 'PO'].copy()
     pago = df_sin_po.groupby('ownerName', as_index=False).agg({
         'amount': 'sum',  # Sumamos el total
-        'listingNickname': lambda x: ', '.join(x.unique())  # Concatenamos los nombres sin repetir
+        'listingNickname': lambda x: ', '.join(x.unique())
     })
-    # pago = df_sin_po.groupby(['ownerName', 'listingNickname'], as_index=False)['amount'].sum()
+
     pago['A_Transferir'] = pago['amount'].abs().round(2)
     pago_final = pago[pago['A_Transferir'] > 0][['ownerName','listingNickname','A_Transferir']]
     pago_final = pago_final.sort_values('ownerName').reset_index(drop=True)
