@@ -1,11 +1,11 @@
 import pandas as pd
 import streamlit as st
 import requests
-from guesty_api import get_guesty_token
+from services import guesty_api
 
 
 
-token = get_guesty_token()
+token = guesty_api.get_guesty_token()
 @st.cache_data(ttl=3600)
 def fetch_guesty_reservations(view_id, headers):
     base_url = f"https://open-api.guesty.com/v1/reservations-reports"
