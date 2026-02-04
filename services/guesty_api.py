@@ -122,28 +122,28 @@ def get_guesty_token() -> str | None:
 # Example usage in your Streamlit app
 # ────────────────────────────────────────────────
 
-st.title("Wellcome Monetización App")
-
-# Optional: Show token status
-if 'guesty_token_expiry' in st.session_state:
-    expiry_dt = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(st.session_state.guesty_token_expiry))
-    st.caption(f"Guesty token status: Valid until {expiry_dt}")
-
-if st.button("Test Guesty Connection & Get Token"):
-    token = get_guesty_token()
-    if token:
-        st.success("Connection successful!")
-        st.code(f"Access Token (first 30 chars): {token[:30]}...", language="text")
-
-        # Optional: Test a real API call (example: get current user info)
-        headers = {"Authorization": f"Bearer {token}"}
-        try:
-            test_response = requests.get(f"{GUESTY_API_BASE}/v1/users/me", headers=headers, timeout=10)
-            test_response.raise_for_status()
-            st.subheader("Test API Response ( /v1/users/me )")
-            st.json(test_response.json())
-        except Exception as e:
-            st.warning(f"Test API call failed: {str(e)} — but token is valid.")
-    else:
-        st.error("Failed to get Guesty token. Check credentials and logs.")
+# st.title("Wellcome Monetización App")
+#
+# # Optional: Show token status
+# if 'guesty_token_expiry' in st.session_state:
+#     expiry_dt = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(st.session_state.guesty_token_expiry))
+#     st.caption(f"Guesty token status: Valid until {expiry_dt}")
+#
+# if st.button("Test Guesty Connection & Get Token"):
+#     token = get_guesty_token()
+#     if token:
+#         st.success("Connection successful!")
+#         # st.code(f"Access Token (first 30 chars): {token[:30]}...", language="text")
+#
+#         # Optional: Test a real API call (example: get current user info)
+#         headers = {"Authorization": f"Bearer {token}"}
+#         try:
+#             test_response = requests.get(f"{GUESTY_API_BASE}/v1/users/me", headers=headers, timeout=10)
+#             test_response.raise_for_status()
+#             st.subheader("Test API Response ( /v1/users/me )")
+#             st.json(test_response.json())
+#         except Exception as e:
+#             st.warning(f"Test API call failed: {str(e)} — but token is valid.")
+#     else:
+#         st.error("Failed to get Guesty token. Check credentials and logs.")
 
