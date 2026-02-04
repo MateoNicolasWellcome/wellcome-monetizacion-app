@@ -26,7 +26,7 @@ def fetch_guesty_reservations(view_id, headers):
         if total_records > 100:
             for skip in range(100, total_records, 100):
                 params['skip'] = skip
-                resp = requests.get(f"{base_url}/{view_id}", headers=headers(), params=params)
+                resp = requests.get(f"{base_url}/{view_id}", headers=headers, params=params)
                 resp.raise_for_status()
                 all_rows.extend(resp.json().get('results',[]))
 
