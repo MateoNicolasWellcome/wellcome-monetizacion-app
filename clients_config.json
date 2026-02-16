@@ -1,0 +1,38 @@
+{
+  "clients": {
+    "wellcome_bogota": {
+      "display_name": "Wellcome Bogota",
+      "app_title": "Wellcome Portal",
+      "location_title": "Bogota 2026",
+      "guesty": {
+        "client_id_env_var": "GUESTY_CLIENT_ID_WELLCOME_BOGOTA",
+        "client_secret_env_var": "GUESTY_CLIENT_SECRET_WELLCOME_BOGOTA",
+        "view_id_checkin": "67e4662ff62c503d30ac4b65",
+        "view_id_checkout": "66e99b9d462a960d2e7ac304",
+        "timezone": "America/Bogota"
+      },
+      "monetizacion": {
+        "cuentas": ["PRINCIPAL", "RH", "COLONIA", "BOULERVARD"],
+        "stripe_default_start": 16
+      },
+      "contabilidad": {
+        "exclude_owner": "Mauricio Duarte",
+        "validation_codes_minimum": ["AF", "VATOC", "CMS"],
+        "facturable_codes": ["CMS", "VATOC"],
+        "audit_notes": "Oragen, D90",
+        "groupings_notes": "Colonia, Nook",
+        "tolerance": 0.01,
+        "max_display_rows": 300
+      },
+      "limpiezas": {
+        "excluded_keywords": ["4991", "orange"],
+        "cleaning_time_minutes": 40,
+        "regular_work_hours": 8,
+        "priority_window_start": 11,
+        "priority_window_end": 15
+      },
+      "seed_data_dir": "seed_data"
+    }
+  },
+  "default_client": "wellcome_bogota"
+}

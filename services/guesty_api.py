@@ -5,24 +5,25 @@ import os
 import json
 from pathlib import Path
 
+from services.storage import get_client_data_dir
+
 # Guesty API constants
 GUESTY_API_BASE = "https://open-api.guesty.com"
-TOKEN_FILE_PATH = Path("/app/data/guesty_token.json")  # Persistent on Railway volume
 
 # Buffer before expiry to refresh proactively (1 hour = 3600 seconds)
 EXPIRY_BUFFER_SECONDS = 3600
 
 
-def ensure_data_directory():
-    """Create the directory if it doesn't exist (Railway volume)"""
-    TOKEN_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+def _get_token_file_path(client_id: str) -> Path:
+    """Devuelve la ruta del archivo de token para un cliente."""
+    return get_client_data_dir(client_id) / "guesty_token.json"
 
 
-def load_token_from_file():
+def _load_token_from_file(token_file_path: Path):
     """Load token and expiry from persistent JSON file"""
-    if TOKEN_FILE_PATH.exists():
+    if token_file_path.exists():
         try:
-            with open(TOKEN_FILE_PATH, "r") as f:
+            with open(token_file_path, "r") as f:
                 data = json.load(f)
                 return data.get("access_token"), float(data.get("expiry_time", 0))
         except (json.JSONDecodeError, IOError):
@@ -31,10 +32,11 @@ def load_token_from_file():
     return None, 0
 
 
-def save_token_to_file(token: str, expiry_time: float):
+def _save_token_to_file(token_file_path: Path, token: str, expiry_time: float):
     """Save token and expiry to persistent JSON file"""
     try:
-        with open(TOKEN_FILE_PATH, "w") as f:
+        token_file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(token_file_path, "w") as f:
             json.dump({
                 "access_token": token,
                 "expiry_time": expiry_time,
@@ -45,45 +47,55 @@ def save_token_to_file(token: str, expiry_time: float):
         st.error(f"Failed to save token file: {e}")
 
 
-@st.cache_resource  # Optional: helps if you have multiple components calling it
-def get_guesty_token() -> str | None:
+def get_guesty_token(
+    client_id: str,
+    client_id_env_var: str,
+    client_secret_env_var: str,
+) -> str | None:
     """
-    Get a valid Guesty access token.
+    Get a valid Guesty access token for the specified client.
     - Reuses from file/session if still valid (with buffer).
     - Requests new one only when necessary (respects 5/day limit).
     Returns the Bearer token string or None on failure.
     """
-    ensure_data_directory()
+    token_file_path = _get_token_file_path(client_id)
+    token_file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    session_key_token = f"guesty_token_{client_id}"
+    session_key_expiry = f"guesty_token_expiry_{client_id}"
 
     current_time = time.time()
 
     # 1. Check in-memory session state (fast for current app run)
-    if 'guesty_token' in st.session_state and 'guesty_token_expiry' in st.session_state:
-        if current_time < st.session_state.guesty_token_expiry - EXPIRY_BUFFER_SECONDS:
-            return st.session_state.guesty_token
+    if session_key_token in st.session_state and session_key_expiry in st.session_state:
+        if current_time < st.session_state[session_key_expiry] - EXPIRY_BUFFER_SECONDS:
+            return st.session_state[session_key_token]
 
     # 2. Check persistent file (survives refreshes, redeploys)
-    token, expiry_time = load_token_from_file()
+    token, expiry_time = _load_token_from_file(token_file_path)
     if token and current_time < expiry_time - EXPIRY_BUFFER_SECONDS:
         # Sync to session state for this run
-        st.session_state.guesty_token = token
-        st.session_state.guesty_token_expiry = expiry_time
+        st.session_state[session_key_token] = token
+        st.session_state[session_key_expiry] = expiry_time
         return token
 
     # 3. Token missing, expired, or near expiry → request new one
-    client_id = os.environ.get('GUESTY_CLIENT_ID')
-    client_secret = os.environ.get('GUESTY_CLIENT_SECRET')
+    cid = os.environ.get(client_id_env_var)
+    csecret = os.environ.get(client_secret_env_var)
 
-    if not client_id or not client_secret:
-        st.error("Guesty API credentials not found in environment variables.")
+    if not cid or not csecret:
+        st.error(
+            f"Guesty API credentials not found. "
+            f"Expected env vars: {client_id_env_var}, {client_secret_env_var}"
+        )
         return None
 
     token_url = f"{GUESTY_API_BASE}/oauth2/token"
     payload = {
         'grant_type': 'client_credentials',
-        'client_id': client_id,
-        'client_secret': client_secret,
-        'scope': 'open-api'  # Adjust if you need specific scopes
+        'client_id': cid,
+        'client_secret': csecret,
+        'scope': 'open-api'
     }
 
     try:
@@ -97,11 +109,11 @@ def get_guesty_token() -> str | None:
         new_expiry = current_time + expires_in
 
         # Save persistently
-        save_token_to_file(new_token, new_expiry)
+        _save_token_to_file(token_file_path, new_token, new_expiry)
 
         # Update session state
-        st.session_state.guesty_token = new_token
-        st.session_state.guesty_token_expiry = new_expiry
+        st.session_state[session_key_token] = new_token
+        st.session_state[session_key_expiry] = new_expiry
 
         expiry_str = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(new_expiry))
         st.success(f"New Guesty token obtained — valid until {expiry_str}")
@@ -116,34 +128,3 @@ def get_guesty_token() -> str | None:
         st.error(f"Unexpected error: {str(e)}")
 
     return None
-
-
-# ────────────────────────────────────────────────
-# Example usage in your Streamlit app
-# ────────────────────────────────────────────────
-
-# st.title("Wellcome Monetización App")
-#
-# # Optional: Show token status
-# if 'guesty_token_expiry' in st.session_state:
-#     expiry_dt = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(st.session_state.guesty_token_expiry))
-#     st.caption(f"Guesty token status: Valid until {expiry_dt}")
-#
-# if st.button("Test Guesty Connection & Get Token"):
-#     token = get_guesty_token()
-#     if token:
-#         st.success("Connection successful!")
-#         # st.code(f"Access Token (first 30 chars): {token[:30]}...", language="text")
-#
-#         # Optional: Test a real API call (example: get current user info)
-#         headers = {"Authorization": f"Bearer {token}"}
-#         try:
-#             test_response = requests.get(f"{GUESTY_API_BASE}/v1/users/me", headers=headers, timeout=10)
-#             test_response.raise_for_status()
-#             st.subheader("Test API Response ( /v1/users/me )")
-#             st.json(test_response.json())
-#         except Exception as e:
-#             st.warning(f"Test API call failed: {str(e)} — but token is valid.")
-#     else:
-#         st.error("Failed to get Guesty token. Check credentials and logs.")
-
