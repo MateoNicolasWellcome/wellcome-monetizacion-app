@@ -1,18 +1,15 @@
 """
-Módulo de almacenamiento para el portal Wellcome.
+Módulo de almacenamiento multi-tenant para el portal Wellcome.
 
-Se encarga de:
-- Detectar el directorio de datos (volume en /app/data o carpeta local /data).
-- Inicializar los archivos a partir de /seed_data la primera vez.
-- Proveer funciones simples para leer y escribir CSV.
+Cada cliente tiene su propio directorio de datos bajo DATA_ROOT/{client_id}/.
 
 Uso típico:
 
     from services.storage import load_csv, save_csv, get_path
 
-    df = load_csv("monetizaciones.csv")
+    df = load_csv("monetizaciones.csv", "wellcome_bogota")
     # ... modificaciones ...
-    save_csv("monetizaciones.csv", df)
+    save_csv("monetizaciones.csv", df, "wellcome_bogota")
 """
 
 from __future__ import annotations
@@ -35,9 +32,9 @@ VOLUME_DATA_DIR = Path("/app/data")        # Railway (volume)
 LOCAL_DATA_DIR = BASE_DIR / "data"         # Desarrollo local
 
 
-def _detect_data_dir() -> Path:
+def _detect_data_root() -> Path:
     """
-    Devuelve el directorio de datos a usar.
+    Devuelve el directorio raíz de datos.
 
     Prioridad:
     1) /app/data si existe (Railway con volumen montado).
@@ -48,97 +45,105 @@ def _detect_data_dir() -> Path:
     return LOCAL_DATA_DIR
 
 
-# Directorio de datos "activo"
-DATA_DIR = _detect_data_dir()
+# Directorio raíz de datos (los subdirectorios por cliente van debajo)
+DATA_ROOT = _detect_data_root()
 
 
-def init_storage(seed_filenames: Optional[Iterable[str]] = None) -> None:
+def get_client_data_dir(client_id: str) -> Path:
+    """Devuelve el directorio de datos para un cliente específico."""
+    return DATA_ROOT / client_id
+
+
+def init_client_storage(
+    client_id: str,
+    seed_dir_name: str = "seed_data",
+    seed_filenames: Optional[Iterable[str]] = None,
+) -> None:
     """
-    Inicializa el sistema de almacenamiento:
+    Inicializa el almacenamiento para un cliente específico.
+    Crea el directorio del cliente y copia archivos semilla si no existen.
 
-    - Crea DATA_DIR si no existe.
-    - Copia archivos desde SEED_DIR a DATA_DIR si aún no existen.
-    - Si seed_filenames es None, copia todos los archivos de SEED_DIR.
+    Args:
+        client_id: Identificador del cliente (ej: "wellcome_bogota").
+        seed_dir_name: Nombre de la carpeta semilla relativa a BASE_DIR.
+        seed_filenames: Archivos específicos a copiar, o None para todos.
     """
+    client_dir = get_client_data_dir(client_id)
+    client_dir.mkdir(parents=True, exist_ok=True)
 
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-    if not SEED_DIR.exists():
-        # No hay semilla, nada que inicializar
+    seed_dir = BASE_DIR / seed_dir_name
+    if not seed_dir.exists():
         return
 
     if seed_filenames is None:
-        # Tomar todos los archivos del directorio seed_data
-        seed_filenames = [p.name for p in SEED_DIR.iterdir() if p.is_file()]
+        seed_filenames = [p.name for p in seed_dir.iterdir() if p.is_file()]
 
     for fname in seed_filenames:
-        src = SEED_DIR / fname
-        dst = DATA_DIR / fname
-
-        if not src.exists():
-            # Archivo declarado pero no existe en la semilla -> lo ignoramos
-            continue
-
-        if not dst.exists():
+        src = seed_dir / fname
+        dst = client_dir / fname
+        if src.exists() and not dst.exists():
             shutil.copy(src, dst)
 
 
-def get_data_dir() -> Path:
-    """Devuelve el Path del directorio de datos actual."""
-    return DATA_DIR
-
-
-def get_path(filename: str) -> Path:
+def migrate_legacy_data(client_id: str) -> None:
     """
-    Devuelve el Path absoluto a un archivo de datos dentro de DATA_DIR.
+    Migración única: mueve archivos planos de DATA_ROOT a DATA_ROOT/{client_id}/
+    si existen. Útil para la primera vez que se despliega la versión multi-tenant.
+    """
+    client_dir = get_client_data_dir(client_id)
+    client_dir.mkdir(parents=True, exist_ok=True)
+
+    for f in DATA_ROOT.iterdir():
+        if f.is_file() and f.suffix in ('.csv', '.json'):
+            dest = client_dir / f.name
+            if not dest.exists():
+                f.rename(dest)
+
+
+def get_path(filename: str, client_id: str) -> Path:
+    """
+    Devuelve el Path absoluto a un archivo de datos dentro del directorio del cliente.
 
     Ejemplo:
-        path = get_path("monetizaciones.csv")
+        path = get_path("monetizaciones.csv", "wellcome_bogota")
     """
-    return DATA_DIR / filename
+    return get_client_data_dir(client_id) / filename
 
 
-def file_exists(filename: str) -> bool:
-    """Indica si existe un archivo de datos con ese nombre en DATA_DIR."""
-    return get_path(filename).exists()
+def file_exists(filename: str, client_id: str) -> bool:
+    """Indica si existe un archivo de datos con ese nombre para el cliente."""
+    return get_path(filename, client_id).exists()
 
 
-def load_csv(filename: str, **read_kwargs) -> pd.DataFrame:
+def load_csv(filename: str, client_id: str, **read_kwargs) -> pd.DataFrame:
     """
-    Carga un CSV desde DATA_DIR y lo devuelve como DataFrame de pandas.
+    Carga un CSV desde el directorio del cliente y lo devuelve como DataFrame.
 
-    read_kwargs se pasa directamente a pandas.read_csv,
-    por si quieres especificar encoding, sep, etc.
+    read_kwargs se pasa directamente a pandas.read_csv.
     """
-    path = get_path(filename)
+    path = get_path(filename, client_id)
     if not path.exists():
         raise FileNotFoundError(f"No se encontró el archivo de datos: {path}")
 
     return pd.read_csv(path, **read_kwargs)
 
 
-def save_csv(filename: str, df: pd.DataFrame, **to_csv_kwargs) -> None:
+def save_csv(filename: str, df: pd.DataFrame, client_id: str, **to_csv_kwargs) -> None:
     """
-    Guarda un DataFrame como CSV dentro de DATA_DIR.
+    Guarda un DataFrame como CSV dentro del directorio del cliente.
 
     Por defecto, index=False a menos que se especifique lo contrario.
     """
-    path = get_path(filename)
+    path = get_path(filename, client_id)
     to_csv_kwargs.setdefault("index", False)
     df.to_csv(path, **to_csv_kwargs)
 
 
-def list_files() -> list[Path]:
+def list_files(client_id: str) -> list[Path]:
     """
-    Devuelve una lista de archivos actualmente en DATA_DIR.
-    Útil para depuración o paneles de administración.
+    Devuelve una lista de archivos actualmente en el directorio del cliente.
     """
-    if not DATA_DIR.exists():
+    client_dir = get_client_data_dir(client_id)
+    if not client_dir.exists():
         return []
-    return [p for p in DATA_DIR.iterdir() if p.is_file()]
-
-
-# Inicializar storage al importar el módulo (una sola vez)
-# Si quieres ser más explícito, puedes comentar esto y llamar init_storage()
-# desde app.py o desde la primera página que use datos.
-init_storage()
+    return [p for p in client_dir.iterdir() if p.is_file()]

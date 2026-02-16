@@ -4,6 +4,7 @@ import streamlit as st
 from babel.numbers import format_currency
 
 from services.storage import load_csv, save_csv, get_path
+from services.client_config import get_active_config
 from process_functions import monetizacion_v0 as mon
 
 
@@ -14,9 +15,12 @@ HISTORIAL_MONETIZACION_FILE = "monetizaciones.csv"
 
 
 def run():
+    config = get_active_config()
+    client_id = config.client_id
+
     st.title("Monetizaciones")
 
-    CUENTAS = ['PRINCIPAL', 'RH', 'COLONIA', 'BOULERVARD']
+    CUENTAS = config.monetizacion.cuentas
 
     # ----------------- SIDEBAR: ACTUALIZAR HISTORIAL AIRBNB -----------------
     with st.sidebar:
@@ -36,23 +40,23 @@ def run():
 
                 updated_historical = mon.update_airbnb_historical(
                     clean_df,
-                    get_path(HISTORIAL_FILE)
+                    get_path(HISTORIAL_FILE, client_id)
                 )
-                save_csv(HISTORIAL_FILE, updated_historical)
+                save_csv(HISTORIAL_FILE, updated_historical, client_id)
 
                 payouts = mon.update_payout(
                     updated_historical,
-                    get_path(HISTORIAL_PAYOUT_FILE)
+                    get_path(HISTORIAL_PAYOUT_FILE, client_id)
                 )
-                save_csv(HISTORIAL_PAYOUT_FILE, payouts)
+                save_csv(HISTORIAL_PAYOUT_FILE, payouts, client_id)
 
                 st.success("Historial de payouts actualizado.")
         else:
             st.warning("NO SE HA CARGADO ARCHIVO DE AIRBNB")
 
     # ----------------- CARGAR HISTORIALES -----------------
-    airbnb_historical = load_csv(HISTORIAL_FILE)
-    payouts = load_csv(HISTORIAL_PAYOUT_FILE)
+    airbnb_historical = load_csv(HISTORIAL_FILE, client_id)
+    payouts = load_csv(HISTORIAL_PAYOUT_FILE, client_id)
 
     # ----------------- AÑADIR PAYOUT MANUAL (STRIPE) -----------------
     st.subheader("Solo para Stripe - completar pagos")
@@ -64,7 +68,8 @@ def run():
         .dropna()
     )
 
-    last_num = max(stripe_nums.astype(int).max(), 16) if not stripe_nums.empty else 16
+    stripe_default = config.monetizacion.stripe_default_start
+    last_num = max(stripe_nums.astype(int).max(), stripe_default) if not stripe_nums.empty else stripe_default
     next_stripe_code = f"Stripe-{last_num + 1}"
 
     with st.expander("Solo para Stripe"):
@@ -86,11 +91,11 @@ def run():
                     "Total pagado": total_pagado_nuevo,
                     "Fecha": fecha_nueva.strftime("%Y-%m-%d"),
                     "Cantidad reservas": numero_reservas_nueva,
-                    "fuente": "PRINCIPAL",
+                    "fuente": CUENTAS[0] if CUENTAS else "PRINCIPAL",
                 }
 
                 payouts = pd.concat([payouts, pd.DataFrame([new_row])], ignore_index=True)
-                save_csv(HISTORIAL_PAYOUT_FILE, payouts)
+                save_csv(HISTORIAL_PAYOUT_FILE, payouts, client_id)
 
                 st.success(f"Payout manual agregado con código {next_stripe_code}")
 
@@ -120,11 +125,11 @@ def run():
         for idx, row in df_editado.iterrows():
             payouts.loc[payouts['Código de referencia'] == row['Código de referencia'], 'id_accival'] = row['id_accival']
 
-        save_csv(HISTORIAL_PAYOUT_FILE, payouts)
+        save_csv(HISTORIAL_PAYOUT_FILE, payouts, client_id)
         st.success("Cambios guardados correctamente.")
 
     # ----------------- ACTUALIZAR MONETIZACIÓN -----------------
-    monet = mon.update_monetizacion(payouts, get_path(HISTORIAL_MONETIZACION_FILE))
+    monet = mon.update_monetizacion(payouts, get_path(HISTORIAL_MONETIZACION_FILE, client_id))
 
     # Sincronizar
     monet["id_accival"] = monet["id_accival"].astype(str)
@@ -144,7 +149,7 @@ def run():
         monet["fecha"] = pd.to_datetime(monet["fecha"], errors="coerce")
         monet = monet.sort_values("fecha").drop_duplicates("id_accival", keep="last")
 
-    save_csv(HISTORIAL_MONETIZACION_FILE, monet)
+    save_csv(HISTORIAL_MONETIZACION_FILE, monet, client_id)
 
     # ----------------- LISTA DE MONETIZACIONES -----------------
     st.subheader("Registro histórico de monetizaciones")
@@ -159,7 +164,7 @@ def run():
         monet_updated = monet.copy()
         for idx, row in monet_editado.iterrows():
             monet_updated.loc[idx] = row
-        save_csv(HISTORIAL_MONETIZACION_FILE, monet_updated)
+        save_csv(HISTORIAL_MONETIZACION_FILE, monet_updated, client_id)
         st.success("Cambios guardados correctamente.")
 
     # ----------------- RESÚMENES Y MÉTRICAS -----------------
@@ -201,7 +206,7 @@ def run():
         buffer.seek(0)
 
         st.download_button(
-            label="📥 Descargar Excel de pre_accival",
+            label="Descargar Excel de pre_accival",
             data=buffer,
             file_name="pre_accival_transacciones.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -222,7 +227,7 @@ def run():
         )
 
         if st.button("Guardar cambios (Payouts)"):
-            save_csv(HISTORIAL_PAYOUT_FILE, payouts_editado)
+            save_csv(HISTORIAL_PAYOUT_FILE, payouts_editado, client_id)
             st.success("Cambios en payouts guardados correctamente.")
 
     # ----------------- GRÁFICOS -----------------

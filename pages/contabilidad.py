@@ -3,8 +3,13 @@ import pandas as pd
 import numpy as np
 from io import BytesIO
 
+from services.client_config import get_active_config
+
 
 def run():
+    config = get_active_config()
+    cc = config.contabilidad
+
     st.title("Contabilidad")
     st.caption("Validación, Facturación y Pago a Propietarios")
 
@@ -14,9 +19,9 @@ def run():
     st.subheader("1. Validación de Reservas")
     st.caption("Se genear un archivo descargable de las reservas que tienen errores. Corregirlas en Guesty")
 
-    tol = 0.01
-    exclude_owner = "Mauricio Duarte"
-    max_rows = 300
+    tol = cc.tolerance
+    exclude_owner = cc.exclude_owner
+    max_rows = cc.max_display_rows
 
     with st.sidebar:
         st.header("Subir documento")
@@ -44,7 +49,7 @@ def run():
 
     # --- Pipeline de validación ---
     @st.cache_data(show_spinner="Analizando reservas...")
-    def procesar_todo(_df: pd.DataFrame, tol: float, exclude: str | None):
+    def procesar_todo(_df: pd.DataFrame, tol: float, exclude: str | None, validation_codes_min: tuple):
         df = _df.copy()
         df["amount"] = pd.to_numeric(df["amount"], errors="coerce") * -1
         df["revenueRecognitionDate"] = pd.to_datetime(df["revenueRecognitionDate"], errors="coerce")
@@ -65,11 +70,12 @@ def run():
         suma = grouped["amount"].sum().to_frame("suma_total").reset_index()
         suma["suma_red"] = np.where(suma["suma_total"].abs() < tol, 0.0, suma["suma_total"])
 
+        validation_codes_set = set(validation_codes_min)
         codigos = grouped["chargeCode"].apply(
             lambda x: sorted({str(c).strip().upper() for c in x.dropna() if pd.notna(c)})
         ).to_frame("codes").reset_index()
         codigos["codes_str"] = codigos["codes"].apply(", ".join)
-        codigos["tiene_minimos"] = codigos["codes"].apply({"AF", "VATOC", "CMS"}.issubset)
+        codigos["tiene_minimos"] = codigos["codes"].apply(validation_codes_set.issubset)
 
         base = suma.merge(codigos, on=["ownerName", "listingNickname", "reservationConfirmationCode"])
 
@@ -104,7 +110,10 @@ def run():
 
         return df, df_limpio, malas_summary
 
-    df_full, df_limpio, df_malas_summary = procesar_todo(raw, tol, exclude_owner)
+    # Pasar validation_codes como tuple para que sea hashable por st.cache_data
+    df_full, df_limpio, df_malas_summary = procesar_todo(
+        raw, tol, exclude_owner, tuple(cc.validation_codes_minimum)
+    )
 
     # Guardar en session_state
     st.session_state["df_full"] = df_full
@@ -150,15 +159,17 @@ def run():
     # =============================================================================
     st.divider()
     st.subheader("2. Facturación a Propietarios")
-    st.caption("Tener cuidado con propietarios auditados aparte: Oragen, D90")
-    st.caption("Un paso después de descargar el archivo es agrupar: Colonia, Nook")
+    if cc.audit_notes:
+        st.caption(f"Tener cuidado con propietarios auditados aparte: {cc.audit_notes}")
+    if cc.groupings_notes:
+        st.caption(f"Un paso después de descargar el archivo es agrupar: {cc.groupings_notes}")
 
     df = df_limpio.copy()
     df['chargeCode'] = df['chargeCode'].astype(str).str.strip().str.upper()
     df['ownerName'] = df['ownerName'].astype(str).str.strip().str.title()
     df['listingNickname'] = df['listingNickname'].astype(str).str.strip()
 
-    df_facturable = df[df['chargeCode'].isin(['CMS', 'VATOC'])].copy()
+    df_facturable = df[df['chargeCode'].isin(cc.facturable_codes)].copy()
 
     cms = df_facturable[df_facturable['chargeCode']=='CMS'] \
         .groupby(['ownerName','listingNickname'])['amount'].sum().reset_index(name='CMS_Neto')
