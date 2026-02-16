@@ -40,8 +40,8 @@
       "guesty": {
         "client_id_env_var": "GUESTY_CLIENT_ID_HAPPAHUB",
         "client_secret_env_var": "GUESTY_CLIENT_SECRET_HAPPAHUB",
-        "view_id_checkin": "67e4662ff62c503d30ac4b65",
-        "view_id_checkout": "66e99b9d462a960d2e7ac304",
+        "view_id_checkin": "69938353e1e225043a4d58df",
+        "view_id_checkout": "6993854b317b6f44fba3b76e",
         "timezone": "America/Bogota"
       },
       "monetizacion": {
