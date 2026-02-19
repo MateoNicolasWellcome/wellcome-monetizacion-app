@@ -5,7 +5,15 @@
       "modules": ["*"],
       "role": "admin"
     },
-    "mateo@wellcome.com": {
+    "experiencemanager@wellcome.com.co": {
+      "clients": ["wellcome_bogota", "HappaHub"],
+      "modules": ["*"]
+    },
+    "onboarding@wellcome.com.co": {
+      "clients": ["wellcome_bogota", "HappaHub"],
+      "modules": ["*"]
+    },
+    "logisticmanager@wellcome.com.co": {
       "clients": ["wellcome_bogota", "HappaHub"],
       "modules": ["*"]
     },
