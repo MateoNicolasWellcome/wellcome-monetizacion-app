@@ -189,3 +189,89 @@ def get_active_config() -> ClientConfig:
             "Llama set_active_client() primero."
         )
     return config
+
+
+# ─────────────────────────────────────────────────────────────
+# Autenticación por email (whitelist)
+# ─────────────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class UserConfig:
+    email: str
+    client_ids: list[str]
+    modules: list[str]
+    role: str = "user"
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == "admin"
+
+
+def _resolve_user_clients(user_entry: dict, all_client_ids: list[str]) -> list[str]:
+    """Resuelve la lista de client_ids. Expande '*' a todos los clientes."""
+    raw_clients = user_entry.get("clients", [])
+    if "*" in raw_clients:
+        return all_client_ids
+    return [cid for cid in raw_clients if cid in all_client_ids]
+
+
+def _resolve_user_modules(user_entry: dict, all_modules: list[str]) -> list[str]:
+    """Resuelve la lista de módulos. Expande '*' a todos los módulos."""
+    raw_modules = user_entry.get("modules", ["*"])
+    if "*" in raw_modules:
+        return all_modules
+    return [m for m in raw_modules if m in all_modules]
+
+
+def authenticate_user(email: str, all_modules: list[str]) -> UserConfig | None:
+    """
+    Autentica un usuario por email contra la whitelist.
+    Retorna UserConfig si el email está autorizado, None si no.
+    """
+    config_data = _load_all_configs()
+    users = config_data.get("users", {})
+    all_client_ids = list(config_data.get("clients", {}).keys())
+
+    normalized_email = email.strip().lower()
+
+    user_entry = None
+    for stored_email, entry in users.items():
+        if stored_email.strip().lower() == normalized_email:
+            user_entry = entry
+            break
+
+    if user_entry is None:
+        return None
+
+    client_ids = _resolve_user_clients(user_entry, all_client_ids)
+    modules = _resolve_user_modules(user_entry, all_modules)
+    role = user_entry.get("role", "user")
+
+    user_config = UserConfig(
+        email=normalized_email,
+        client_ids=client_ids,
+        modules=modules,
+        role=role,
+    )
+
+    st.session_state["authenticated_user"] = user_config
+    return user_config
+
+
+def is_authenticated() -> bool:
+    """Verifica si hay un usuario autenticado en session_state."""
+    return (
+        "authenticated_user" in st.session_state
+        and st.session_state["authenticated_user"] is not None
+    )
+
+
+def get_authenticated_user() -> UserConfig | None:
+    """Retorna el UserConfig del usuario autenticado, o None."""
+    return st.session_state.get("authenticated_user")
+
+
+def logout_user() -> None:
+    """Cierra la sesión eliminando datos de auth de session_state."""
+    for key in ["authenticated_user", "active_client_id", "client_config"]:
+        st.session_state.pop(key, None)
