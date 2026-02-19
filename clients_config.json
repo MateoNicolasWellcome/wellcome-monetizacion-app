@@ -1,4 +1,19 @@
 {
+  "users": {
+    "admin@wellcome.com": {
+      "clients": ["*"],
+      "modules": ["*"],
+      "role": "admin"
+    },
+    "mateo@wellcome.com": {
+      "clients": ["wellcome_bogota", "HappaHub"],
+      "modules": ["*"]
+    },
+    "contralora@happahub.com": {
+      "clients": ["HappaHub"],
+      "modules": ["Monetización", "Plan Limpiezas"]
+    }
+  },
   "clients": {
     "wellcome_bogota": {
       "display_name": "Wellcome Bogota",
