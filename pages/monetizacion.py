@@ -60,46 +60,72 @@ def run():
     airbnb_historical = load_csv(HISTORIAL_FILE, client_id)
     payouts = load_csv(HISTORIAL_PAYOUT_FILE, client_id)
 
-    # ----------------- AÑADIR PAYOUT MANUAL (STRIPE) -----------------
-    st.subheader("Solo para Stripe - completar pagos")
+    # ----------------- AÑADIR PAYOUT MANUAL -----------------
+    st.subheader("Agregar payout manual")
 
+    # Auto-generar siguiente código Stripe
     stripe_nums = (
         payouts["Código de referencia"]
         .astype(str)
         .str.extract(r"^Stripe-(\d+)$", expand=False)
         .dropna()
     )
-
     stripe_default = config.monetizacion.stripe_default_start
     last_num = max(stripe_nums.astype(int).max(), stripe_default) if not stripe_nums.empty else stripe_default
     next_stripe_code = f"Stripe-{last_num + 1}"
 
-    with st.expander("Solo para Stripe"):
+    with st.expander("Agregar payout manual"):
         with st.form("form_nuevo_payout"):
-            st.markdown(
-                f"**Código de referencia asignado automáticamente:** `{next_stripe_code}`"
-            )
+            col_tipo, col_cuenta = st.columns(2)
+            with col_tipo:
+                tipo_payout = st.selectbox(
+                    "Tipo de payout",
+                    ["Stripe", "Otro"],
+                    help="Stripe auto-genera el código. Otro permite código libre.",
+                )
+            with col_cuenta:
+                fuente_payout = st.selectbox("Cuenta / Fuente", CUENTAS)
+
+            if tipo_payout == "Stripe":
+                st.markdown(
+                    f"**Código de referencia automático:** `{next_stripe_code}`"
+                )
+                codigo_referencia = next_stripe_code
+            else:
+                codigo_referencia = st.text_input(
+                    "Código de referencia",
+                    placeholder="Ej: Boulevard, Transferencia-01, etc.",
+                )
 
             fecha_nueva = st.date_input("Fecha de payout")
-            total_pagado_nuevo = st.number_input("Total pagado (USD)", min_value=0.0)
-            monto_nuevo = st.number_input("Monto (COP)", min_value=0.0)
-            numero_reservas_nueva = st.number_input("Número de reservas", min_value=0.0)
+            col_usd, col_cop = st.columns(2)
+            with col_usd:
+                total_pagado_nuevo = st.number_input("Total pagado (USD)", min_value=0.0, format="%.2f")
+            with col_cop:
+                monto_nuevo = st.number_input("Monto (COP)", min_value=0.0, format="%.0f")
+            numero_reservas_nueva = st.number_input("Número de reservas", min_value=0, step=1)
 
-            if st.form_submit_button("Guardar payout manual"):
-                new_row = {
-                    "id_accival": "pre_accival",
-                    "Código de referencia": next_stripe_code,
-                    "Monto": monto_nuevo,
-                    "Total pagado": total_pagado_nuevo,
-                    "Fecha": fecha_nueva.strftime("%Y-%m-%d"),
-                    "Cantidad reservas": numero_reservas_nueva,
-                    "fuente": CUENTAS[0] if CUENTAS else "PRINCIPAL",
-                }
+            submitted = st.form_submit_button("Guardar payout manual")
+            if submitted:
+                if not codigo_referencia or not codigo_referencia.strip():
+                    st.error("El código de referencia no puede estar vacío.")
+                elif total_pagado_nuevo <= 0:
+                    st.error("El total pagado (USD) debe ser mayor a 0.")
+                else:
+                    new_row = {
+                        "id_accival": "pre_accival",
+                        "Código de referencia": codigo_referencia.strip(),
+                        "Monto": monto_nuevo,
+                        "Total pagado": total_pagado_nuevo,
+                        "Fecha": fecha_nueva.strftime("%Y-%m-%d"),
+                        "Cantidad reservas": numero_reservas_nueva,
+                        "fuente": fuente_payout,
+                    }
 
-                payouts = pd.concat([payouts, pd.DataFrame([new_row])], ignore_index=True)
-                save_csv(HISTORIAL_PAYOUT_FILE, payouts, client_id)
+                    payouts = pd.concat([payouts, pd.DataFrame([new_row])], ignore_index=True)
+                    save_csv(HISTORIAL_PAYOUT_FILE, payouts, client_id)
 
-                st.success(f"Payout manual agregado con código {next_stripe_code}")
+                    st.success(f"Payout manual agregado: **{codigo_referencia}** ({fuente_payout})")
 
     # ----------------- EDITAR id_accival -----------------
     st.subheader("Transacciones pendientes de monetización")
