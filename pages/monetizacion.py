@@ -184,17 +184,6 @@ def run():
     monet = monet.sort_values("fecha", ascending=False).reset_index(drop=True)
     st.dataframe(monet)
 
-    # Editar solo sin fecha
-    sin_fecha = monet[monet["fecha"].isna()].copy()
-    monet_editado = st.data_editor(sin_fecha, num_rows="fixed")
-
-    if st.button("Guardar cambios monetizaciones"):
-        monet_updated = monet.copy()
-        for idx, row in monet_editado.iterrows():
-            monet_updated.loc[idx] = row
-        save_csv(HISTORIAL_MONETIZACION_FILE, monet_updated, client_id)
-        st.success("Cambios guardados correctamente.")
-
     # =====================================================================
     #  ESTADÍSTICAS Y MÉTRICAS
     # =====================================================================
@@ -547,13 +536,154 @@ def run():
     st.caption("Listado de todos los payouts enviados con su id de la monetización de Accival")
     st.dataframe(payouts, use_container_width=True)
 
-    with st.expander("Cambios en caso de error para Payouts"):
+    # =====================================================================
+    #  MODO EDITOR — Corrección de datos
+    # =====================================================================
+    st.header("Modo Editor — Corrección de datos")
+    st.caption("Edita cualquier campo en caso de error. Los cambios se guardan directamente en el volume.")
+
+    tab_payouts, tab_monet, tab_reserv = st.tabs(["Payouts", "Monetizaciones", "Reservaciones"])
+
+    # --- Tab 1: Editor de Payouts ---
+    with tab_payouts:
+        st.markdown("**Todas las columnas son editables.** Usa el checkbox para marcar filas a eliminar.")
+
+        payouts_edit = payouts.copy()
+        payouts_edit.insert(0, '_eliminar', False)
+
         payouts_editado = st.data_editor(
-            payouts,
-            disabled=[col for col in payouts.columns if col != "id_accival"],
+            payouts_edit,
+            column_config={
+                "_eliminar": st.column_config.CheckboxColumn("Eliminar", default=False),
+                "id_accival": st.column_config.TextColumn("ID Accival"),
+                "Código de referencia": st.column_config.TextColumn("Código Ref."),
+                "Monto": st.column_config.NumberColumn("Monto COP", format="%.0f"),
+                "Total pagado": st.column_config.NumberColumn("Total USD", format="%.2f"),
+                "Fecha": st.column_config.TextColumn("Fecha"),
+                "Cantidad reservas": st.column_config.NumberColumn("# Reservas"),
+                "fuente": st.column_config.TextColumn("Fuente"),
+            },
             num_rows="fixed",
+            use_container_width=True,
+            key="editor_payouts",
         )
 
-        if st.button("Guardar cambios (Payouts)"):
-            save_csv(HISTORIAL_PAYOUT_FILE, payouts_editado, client_id)
-            st.success("Cambios en payouts guardados correctamente.")
+        col_save_p, col_del_p = st.columns(2)
+        with col_save_p:
+            if st.button("Guardar cambios (Payouts)", key="btn_save_payouts"):
+                df_guardado = payouts_editado.drop(columns=['_eliminar'])
+                save_csv(HISTORIAL_PAYOUT_FILE, df_guardado, client_id)
+                st.success("Payouts actualizados correctamente.")
+                st.rerun()
+        with col_del_p:
+            filas_eliminar = payouts_editado[payouts_editado['_eliminar'] == True]
+            if st.button(
+                f"Eliminar {len(filas_eliminar)} fila(s) seleccionada(s)",
+                key="btn_del_payouts",
+                disabled=len(filas_eliminar) == 0,
+            ):
+                df_sin_eliminados = payouts_editado[payouts_editado['_eliminar'] != True].drop(columns=['_eliminar'])
+                save_csv(HISTORIAL_PAYOUT_FILE, df_sin_eliminados, client_id)
+                st.success(f"{len(filas_eliminar)} fila(s) eliminada(s) de payouts.")
+                st.rerun()
+
+    # --- Tab 2: Editor de Monetizaciones ---
+    with tab_monet:
+        st.markdown("**Edita trm, monto_cop, costo, fecha y más.** Usa el checkbox para marcar filas a eliminar.")
+
+        monet_edit = monet.copy()
+        monet_edit.insert(0, '_eliminar', False)
+
+        monet_editado = st.data_editor(
+            monet_edit,
+            column_config={
+                "_eliminar": st.column_config.CheckboxColumn("Eliminar", default=False),
+                "id_accival": st.column_config.TextColumn("ID Accival"),
+                "monto_usd": st.column_config.NumberColumn("USD", format="%.2f"),
+                "num_transacciones": st.column_config.NumberColumn("# Trans."),
+                "trm": st.column_config.NumberColumn("TRM", format="%.0f"),
+                "monto_cop": st.column_config.NumberColumn("COP", format="%.0f"),
+                "costo": st.column_config.NumberColumn("Costo", format="%.0f"),
+                "fecha": st.column_config.TextColumn("Fecha"),
+                "trm_dia": st.column_config.NumberColumn("TRM Día", format="%.0f"),
+            },
+            num_rows="fixed",
+            use_container_width=True,
+            key="editor_monet",
+        )
+
+        col_save_m, col_del_m, col_recalc = st.columns(3)
+        with col_save_m:
+            if st.button("Guardar cambios (Monetizaciones)", key="btn_save_monet"):
+                df_guardado = monet_editado.drop(columns=['_eliminar'])
+                save_csv(HISTORIAL_MONETIZACION_FILE, df_guardado, client_id)
+                st.success("Monetizaciones actualizadas correctamente.")
+                st.rerun()
+        with col_del_m:
+            filas_eliminar_m = monet_editado[monet_editado['_eliminar'] == True]
+            if st.button(
+                f"Eliminar {len(filas_eliminar_m)} fila(s)",
+                key="btn_del_monet",
+                disabled=len(filas_eliminar_m) == 0,
+            ):
+                df_sin_eliminados = monet_editado[monet_editado['_eliminar'] != True].drop(columns=['_eliminar'])
+                save_csv(HISTORIAL_MONETIZACION_FILE, df_sin_eliminados, client_id)
+                st.success(f"{len(filas_eliminar_m)} fila(s) eliminada(s) de monetizaciones.")
+                st.rerun()
+        with col_recalc:
+            if st.button("Recalcular COP y Costo", key="btn_recalc"):
+                df_recalc = monet_editado.drop(columns=['_eliminar']).copy()
+                df_recalc['trm'] = pd.to_numeric(df_recalc['trm'], errors='coerce')
+                df_recalc['monto_usd'] = pd.to_numeric(df_recalc['monto_usd'], errors='coerce')
+                df_recalc['trm_dia'] = pd.to_numeric(df_recalc['trm_dia'], errors='coerce')
+
+                mask_recalc = df_recalc['trm'].notna() & df_recalc['monto_usd'].notna()
+                df_recalc.loc[mask_recalc, 'monto_cop'] = (
+                    df_recalc.loc[mask_recalc, 'monto_usd'] * df_recalc.loc[mask_recalc, 'trm']
+                )
+
+                mask_costo = mask_recalc & df_recalc['trm_dia'].notna()
+                df_recalc.loc[mask_costo, 'costo'] = (
+                    df_recalc.loc[mask_costo, 'monto_usd']
+                    * (df_recalc.loc[mask_costo, 'trm'] - df_recalc.loc[mask_costo, 'trm_dia'])
+                )
+
+                save_csv(HISTORIAL_MONETIZACION_FILE, df_recalc, client_id)
+                st.success("Recalculado: monto_cop = usd × trm, costo = usd × (trm − trm_dia)")
+                st.rerun()
+
+    # --- Tab 3: Editor de Reservaciones ---
+    with tab_reserv:
+        st.markdown("**Historial de reservaciones Airbnb.** Todas las columnas son editables.")
+
+        reserv_edit = airbnb_historical.copy()
+        reserv_edit.insert(0, '_eliminar', False)
+
+        reserv_editado = st.data_editor(
+            reserv_edit,
+            column_config={
+                "_eliminar": st.column_config.CheckboxColumn("Eliminar", default=False),
+            },
+            num_rows="fixed",
+            use_container_width=True,
+            key="editor_reserv",
+        )
+
+        col_save_r, col_del_r = st.columns(2)
+        with col_save_r:
+            if st.button("Guardar cambios (Reservaciones)", key="btn_save_reserv"):
+                df_guardado = reserv_editado.drop(columns=['_eliminar'])
+                save_csv(HISTORIAL_FILE, df_guardado, client_id)
+                st.success("Reservaciones actualizadas correctamente.")
+                st.rerun()
+        with col_del_r:
+            filas_eliminar_r = reserv_editado[reserv_editado['_eliminar'] == True]
+            if st.button(
+                f"Eliminar {len(filas_eliminar_r)} fila(s)",
+                key="btn_del_reserv",
+                disabled=len(filas_eliminar_r) == 0,
+            ):
+                df_sin_eliminados = reserv_editado[reserv_editado['_eliminar'] != True].drop(columns=['_eliminar'])
+                save_csv(HISTORIAL_FILE, df_sin_eliminados, client_id)
+                st.success(f"{len(filas_eliminar_r)} fila(s) eliminada(s) de reservaciones.")
+                st.rerun()
