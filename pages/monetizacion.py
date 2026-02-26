@@ -185,6 +185,80 @@ def run():
     st.dataframe(monet)
 
     # =====================================================================
+    #  EXPORT PRE_ACCIVAL
+    # =====================================================================
+    df_pre_payout = payouts[payouts['id_accival'].str.startswith('pre_accival')][
+        ['id_accival', 'Fecha', 'Código de referencia', 'Total pagado']
+    ].copy()
+
+    if not df_pre_payout.empty:
+        from openpyxl.styles import Border, Side, Font, Alignment, PatternFill
+
+        buffer = io.BytesIO()
+        df_pre_payout['Total pagado'] = pd.to_numeric(df_pre_payout['Total pagado'], errors='coerce')
+
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            df_pre_payout.to_excel(writer, index=False, sheet_name='pre_accival')
+            ws = writer.sheets['pre_accival']
+
+            thin_border = Border(
+                left=Side(style='thin'),
+                right=Side(style='thin'),
+                top=Side(style='thin'),
+                bottom=Side(style='thin'),
+            )
+            header_font = Font(bold=True)
+            header_fill = PatternFill(start_color='D9E1F2', end_color='D9E1F2', fill_type='solid')
+            total_font = Font(bold=True, size=12)
+
+            # Formato headers
+            for cell in ws[1]:
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.border = thin_border
+                cell.alignment = Alignment(horizontal='center')
+
+            # Bordes en todas las celdas de datos
+            num_rows = len(df_pre_payout)
+            num_cols = len(df_pre_payout.columns)
+            for row in ws.iter_rows(min_row=2, max_row=num_rows + 1, max_col=num_cols):
+                for cell in row:
+                    cell.border = thin_border
+
+            # Formato USD para columna "Total pagado" (columna D = 4)
+            for row in ws.iter_rows(min_row=2, max_row=num_rows + 1, min_col=4, max_col=4):
+                for cell in row:
+                    cell.number_format = '$#,##0.00'
+
+            # Fila de TOTAL
+            total_row = num_rows + 2
+            ws.cell(row=total_row, column=3, value='TOTAL').font = total_font
+            ws.cell(row=total_row, column=3).border = thin_border
+            ws.cell(row=total_row, column=3).alignment = Alignment(horizontal='right')
+
+            total_value = df_pre_payout['Total pagado'].sum()
+            total_cell = ws.cell(row=total_row, column=4, value=total_value)
+            total_cell.font = total_font
+            total_cell.border = thin_border
+            total_cell.number_format = '$#,##0.00'
+
+            # Ajustar ancho de columnas
+            col_widths = {'A': 16, 'B': 14, 'C': 24, 'D': 16}
+            for col_letter, width in col_widths.items():
+                ws.column_dimensions[col_letter].width = width
+
+        buffer.seek(0)
+
+        st.download_button(
+            label="Descargar Excel de pre_accival",
+            data=buffer,
+            file_name="pre_accival_transacciones.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    else:
+        st.info("No hay filas con 'pre_accival' para exportar.")
+
+    # =====================================================================
     #  ESTADÍSTICAS Y MÉTRICAS
     # =====================================================================
     st.header("📊 Estadísticas")
@@ -509,27 +583,6 @@ def run():
             st.plotly_chart(fig_acum, use_container_width=True)
 
     # =====================================================================
-    #  EXPORT PRE_ACCIVAL
-    # =====================================================================
-    df_pre_payout = payouts[payouts['id_accival'].str.startswith('pre_accival')][
-        ['id_accival', 'Fecha', 'Código de referencia', 'Total pagado']
-    ]
-
-    if not df_pre_payout.empty:
-        buffer = io.BytesIO()
-        df_pre_payout.to_excel(buffer, index=False, sheet_name='pre_accival')
-        buffer.seek(0)
-
-        st.download_button(
-            label="Descargar Excel de pre_accival",
-            data=buffer,
-            file_name="pre_accival_transacciones.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-    else:
-        st.info("No hay filas con 'pre_accival' para exportar.")
-
-    # =====================================================================
     #  PAYOUTS
     # =====================================================================
     st.subheader("Payouts")
@@ -549,6 +602,7 @@ def run():
         st.markdown("**Todas las columnas son editables.** Usa el checkbox para marcar filas a eliminar.")
 
         payouts_edit = payouts.copy()
+        payouts_edit['Fecha'] = payouts_edit['Fecha'].astype(str).replace('NaT', '')
         payouts_edit.insert(0, '_eliminar', False)
 
         payouts_editado = st.data_editor(
@@ -560,7 +614,7 @@ def run():
                 "Monto": st.column_config.NumberColumn("Monto COP", format="%.0f"),
                 "Total pagado": st.column_config.NumberColumn("Total USD", format="%.2f"),
                 "Fecha": st.column_config.TextColumn("Fecha"),
-                "Cantidad reservas": st.column_config.NumberColumn("# Reservas"),
+                "Cantidad reservas": st.column_config.TextColumn("# Reservas"),
                 "fuente": st.column_config.TextColumn("Fuente"),
             },
             num_rows="fixed",
@@ -592,6 +646,10 @@ def run():
         st.markdown("**Edita trm, monto_cop, costo, fecha y más.** Usa el checkbox para marcar filas a eliminar.")
 
         monet_edit = monet.copy()
+        monet_edit['fecha'] = monet_edit['fecha'].astype(str).replace('NaT', '')
+        for _col in ['monto_usd', 'num_transacciones', 'trm', 'monto_cop', 'costo', 'trm_dia']:
+            if _col in monet_edit.columns:
+                monet_edit[_col] = pd.to_numeric(monet_edit[_col], errors='coerce')
         monet_edit.insert(0, '_eliminar', False)
 
         monet_editado = st.data_editor(
@@ -657,6 +715,8 @@ def run():
         st.markdown("**Historial de reservaciones Airbnb.** Todas las columnas son editables.")
 
         reserv_edit = airbnb_historical.copy()
+        if 'Fecha' in reserv_edit.columns:
+            reserv_edit['Fecha'] = reserv_edit['Fecha'].astype(str).replace('NaT', '')
         reserv_edit.insert(0, '_eliminar', False)
 
         reserv_editado = st.data_editor(
