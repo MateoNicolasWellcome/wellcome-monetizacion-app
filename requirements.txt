@@ -6,3 +6,5 @@ numpy
 XlsxWriter
 requests
 plotly
+psycopg2-binary
+sqlalchemy

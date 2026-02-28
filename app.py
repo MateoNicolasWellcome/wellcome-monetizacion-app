@@ -12,6 +12,7 @@ from services.client_config import (
     logout_user,
 )
 from services.storage import init_client_storage, migrate_legacy_data
+from services.database import init_db
 
 st.set_page_config(
     page_title="Wellcome Portal",
@@ -21,9 +22,12 @@ st.set_page_config(
 BASE_DIR = Path(__file__).parent
 
 PAGES = {
-    "Monetización": "monetizacion",
-    "Contabilidad": "contabilidad",
-    "Plan Limpiezas": "plan_limpiezas"
+    "Monetización":   "monetizacion",
+    "Contabilidad":   "contabilidad",
+    "Plan Limpiezas": "plan_limpiezas",
+    "Propiedades":    "propiedades",
+    "Calendario":     "calendario",
+    "Ingresos":       "ingresos",
 }
 
 
@@ -60,6 +64,9 @@ def show_login_page():
 
 
 def main():
+    # Inicializar DB (crea tablas si no existen)
+    init_db()
+
     # --- Gate: verificar autenticación ---
     if not is_authenticated():
         show_login_page()
