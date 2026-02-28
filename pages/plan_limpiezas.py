@@ -3,6 +3,8 @@ import pandas as pd
 import streamlit as st
 import io
 from process_functions import cleanings as fc
+from services.guesty_api import get_guesty_token, GuestyAuthError
+from services.guesty_client import GuestyClient
 from services import guesty_view_endpoint
 
 # --- Page Config ---
@@ -124,16 +126,17 @@ def apply_filters_to_reservations(reservations_df, excluded_keywords):
 def load_data():
     columns = ["checkInDate", "checkOutDate", "listing._id", "listing.nickname",
                "guestsCount", "confirmationCode"]
-
     try:
-        data = fc.run_frecuency(
-            guesty_view_endpoint.c_in,
-            guesty_view_endpoint.c_out,
-            columns, "checkInDate", "checkOutDate"
-        )
-        return data
+        token = get_guesty_token()
+        client = GuestyClient(token)
+        c_in  = guesty_view_endpoint.get_checkin_data(client)
+        c_out = guesty_view_endpoint.get_checkout_data(client)
+        return fc.run_frecuency(c_in, c_out, columns, "checkInDate", "checkOutDate")
+    except GuestyAuthError as e:
+        st.error(f"❌ Error de autenticación con Guesty: {e}")
+        return None
     except Exception as e:
-        st.error(f"❌ Error cargando datos: {str(e)}")
+        st.error(f"❌ Error cargando datos: {e}")
         return None
 
 

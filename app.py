@@ -2,6 +2,8 @@ import importlib
 from pathlib import Path
 import streamlit as st
 
+from services.database import init_db
+
 st.set_page_config(
     page_title="Wellcome Portal",
     layout="wide",
@@ -10,9 +12,12 @@ st.set_page_config(
 BASE_DIR = Path(__file__).parent
 
 PAGES = {
-    "Monetización": "monetizacion",
-    "Contabilidad": "contabilidad",
-    "Plan Limpiezas": "plan_limpiezas"
+    "Monetización":   "monetizacion",
+    "Contabilidad":   "contabilidad",
+    "Plan Limpiezas": "plan_limpiezas",
+    "Propiedades":    "propiedades",
+    "Calendario":     "calendario",
+    "Ingresos":       "ingresos",
 }
 
 
@@ -25,6 +30,9 @@ def load_page_module(module_name: str):
 
 
 def main():
+    # Inicializar la DB al arrancar (crea tablas si no existen)
+    init_db()
+
     # Sidebar: selector de módulo
     st.sidebar.title("Wellcome Portal")
     st.sidebar.markdown("---")
