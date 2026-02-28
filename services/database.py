@@ -161,6 +161,30 @@ def is_stale(table: str, pk_col: str, pk_val: str,
 
 # ── Escritura (upsert) ────────────────────────────────────────────────────────
 
+_LISTINGS_COLS = [
+    "id", "nickname", "title", "bedrooms", "bathrooms", "room_type",
+    "type", "person_capacity", "city", "street", "listed", "active", "thumbnail",
+]
+
+_RESERVATIONS_COLS = [
+    "id", "confirmation_code", "listing_id", "listing_nickname",
+    "check_in", "check_out", "nights", "status", "source", "currency",
+    "total_price", "fare_accommodation", "host_service_fee", "tax", "guest_name",
+]
+
+_CALENDAR_COLS = ["listing_id", "date", "status", "price", "min_nights", "allotment"]
+
+
+def _fill_missing_cols(df: pd.DataFrame, required_cols: list[str]) -> pd.DataFrame:
+    """Asegura que el DataFrame tenga todas las columnas requeridas (rellena con None)."""
+    df = df.copy()
+    for col in required_cols:
+        if col not in df.columns:
+            df[col] = None
+    # Reemplazar NaN con None para que SQLAlchemy los envíe como NULL
+    return df.where(df.notna(), other=None)
+
+
 def upsert_listings(df: pd.DataFrame) -> int:
     """
     Inserta o actualiza listings en la DB.
@@ -172,7 +196,8 @@ def upsert_listings(df: pd.DataFrame) -> int:
     if df.empty:
         return 0
 
-    rows = df.to_dict(orient="records")
+    df = _fill_missing_cols(df, _LISTINGS_COLS)
+    rows = df[_LISTINGS_COLS].to_dict(orient="records")
     sql = text("""
         INSERT INTO listings
             (id, nickname, title, bedrooms, bathrooms, room_type, type,
@@ -228,7 +253,8 @@ def upsert_reservations(df: pd.DataFrame) -> int:
     if df.empty:
         return 0
 
-    rows = df.to_dict(orient="records")
+    df = _fill_missing_cols(df, _RESERVATIONS_COLS)
+    rows = df[_RESERVATIONS_COLS].to_dict(orient="records")
     engine = get_engine()
 
     if "sqlite" in engine.dialect.name:
@@ -281,7 +307,8 @@ def upsert_calendar_slots(df: pd.DataFrame) -> int:
     if df.empty:
         return 0
 
-    rows = df.to_dict(orient="records")
+    df = _fill_missing_cols(df, _CALENDAR_COLS)
+    rows = df[_CALENDAR_COLS].to_dict(orient="records")
     engine = get_engine()
 
     if "sqlite" in engine.dialect.name:
