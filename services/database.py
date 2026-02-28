@@ -46,20 +46,20 @@ def _conn():
 
 _CREATE_LISTINGS = """
 CREATE TABLE IF NOT EXISTS listings (
-    id              TEXT PRIMARY KEY,
-    nickname        TEXT,
-    title           TEXT,
-    bedrooms        INTEGER,
-    bathrooms       FLOAT,
-    room_type       TEXT,
-    type            TEXT,
-    person_capacity INTEGER,
-    city            TEXT,
-    street          TEXT,
-    listed          BOOLEAN,
-    active          BOOLEAN,
-    thumbnail       TEXT,
-    fetched_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    id           TEXT PRIMARY KEY,
+    nickname     TEXT,
+    title        TEXT,
+    bedrooms     INTEGER,
+    bathrooms    FLOAT,
+    room_type    TEXT,
+    type         TEXT,
+    accommodates INTEGER,
+    city         TEXT,
+    street       TEXT,
+    islisted     BOOLEAN,
+    active       BOOLEAN,
+    thumbnail    TEXT,
+    fetched_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 """
 
@@ -105,7 +105,33 @@ def init_db() -> None:
         conn.execute(text(_CREATE_RESERVATIONS))
         conn.execute(text(_CREATE_CALENDAR_SLOTS))
         conn.commit()
+
+    # Migraciones defensivas para columnas renombradas (idempotentes)
+    _migrate_listings_columns()
     logger.info("DB initialized (tables verified/created).")
+
+
+def _migrate_listings_columns() -> None:
+    """
+    Renombra columnas viejas en 'listings' si aún existen.
+    Idempotente: no falla si la columna ya fue renombrada.
+    """
+    migrations = [
+        "ALTER TABLE listings RENAME COLUMN person_capacity TO accommodates",
+        "ALTER TABLE listings RENAME COLUMN listed TO islisted",
+    ]
+    engine = get_engine()
+    is_sqlite = "sqlite" in engine.dialect.name
+    for sql in migrations:
+        # SQLite ≥ 3.25 soporta RENAME COLUMN; PostgreSQL también
+        with _conn() as conn:
+            try:
+                conn.execute(text(sql))
+                conn.commit()
+                logger.info("Migration applied: %s", sql)
+            except Exception:
+                conn.rollback()
+                # Columna ya renombrada o no existe la columna vieja — OK
 
 
 # ── Lectura ───────────────────────────────────────────────────────────────────
@@ -163,7 +189,7 @@ def is_stale(table: str, pk_col: str, pk_val: str,
 
 _LISTINGS_COLS = [
     "id", "nickname", "title", "bedrooms", "bathrooms", "room_type",
-    "type", "person_capacity", "city", "street", "listed", "active", "thumbnail",
+    "type", "accommodates", "city", "street", "islisted", "active", "thumbnail",
 ]
 
 _RESERVATIONS_COLS = [
@@ -201,25 +227,25 @@ def upsert_listings(df: pd.DataFrame) -> int:
     sql = text("""
         INSERT INTO listings
             (id, nickname, title, bedrooms, bathrooms, room_type, type,
-             person_capacity, city, street, listed, active, thumbnail, fetched_at)
+             accommodates, city, street, islisted, active, thumbnail, fetched_at)
         VALUES
             (:id, :nickname, :title, :bedrooms, :bathrooms, :room_type, :type,
-             :person_capacity, :city, :street, :listed, :active, :thumbnail,
+             :accommodates, :city, :street, :islisted, :active, :thumbnail,
              CURRENT_TIMESTAMP)
         ON CONFLICT (id) DO UPDATE SET
-            nickname        = EXCLUDED.nickname,
-            title           = EXCLUDED.title,
-            bedrooms        = EXCLUDED.bedrooms,
-            bathrooms       = EXCLUDED.bathrooms,
-            room_type       = EXCLUDED.room_type,
-            type            = EXCLUDED.type,
-            person_capacity = EXCLUDED.person_capacity,
-            city            = EXCLUDED.city,
-            street          = EXCLUDED.street,
-            listed          = EXCLUDED.listed,
-            active          = EXCLUDED.active,
-            thumbnail       = EXCLUDED.thumbnail,
-            fetched_at      = CURRENT_TIMESTAMP
+            nickname     = EXCLUDED.nickname,
+            title        = EXCLUDED.title,
+            bedrooms     = EXCLUDED.bedrooms,
+            bathrooms    = EXCLUDED.bathrooms,
+            room_type    = EXCLUDED.room_type,
+            type         = EXCLUDED.type,
+            accommodates = EXCLUDED.accommodates,
+            city         = EXCLUDED.city,
+            street       = EXCLUDED.street,
+            islisted     = EXCLUDED.islisted,
+            active       = EXCLUDED.active,
+            thumbnail    = EXCLUDED.thumbnail,
+            fetched_at   = CURRENT_TIMESTAMP
     """)
 
     # SQLite no soporta ON CONFLICT DO UPDATE con EXCLUDED — usar REPLACE
@@ -228,10 +254,10 @@ def upsert_listings(df: pd.DataFrame) -> int:
         sql = text("""
             INSERT OR REPLACE INTO listings
                 (id, nickname, title, bedrooms, bathrooms, room_type, type,
-                 person_capacity, city, street, listed, active, thumbnail, fetched_at)
+                 accommodates, city, street, islisted, active, thumbnail, fetched_at)
             VALUES
                 (:id, :nickname, :title, :bedrooms, :bathrooms, :room_type, :type,
-                 :person_capacity, :city, :street, :listed, :active, :thumbnail,
+                 :accommodates, :city, :street, :islisted, :active, :thumbnail,
                  CURRENT_TIMESTAMP)
         """)
 
