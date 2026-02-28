@@ -156,14 +156,17 @@ def run():
         st.warning("No hay datos de calendario para esta propiedad en el rango seleccionado.")
         st.stop()
 
-    # Normalizar fechas
-    cal_df["date"] = pd.to_datetime(cal_df["date"]).dt.date
+    # Normalizar fechas — mantener como datetime64 para comparaciones homogéneas
+    cal_df["date"] = pd.to_datetime(cal_df["date"])
 
-    # Filtrar por rango seleccionado
+    # Filtrar por rango seleccionado (comparar date vs date para evitar TypeError)
     cal_df = cal_df[
-        (cal_df["date"] >= start_date) &
-        (cal_df["date"] <= end_date)
+        (cal_df["date"].dt.date >= start_date) &
+        (cal_df["date"].dt.date <= end_date)
     ].copy()
+
+    # Convertir a date (sin hora) para display
+    cal_df["date"] = cal_df["date"].dt.date
 
     # ── Métricas ──────────────────────────────────────────────────────────────
     total_days = len(cal_df)
