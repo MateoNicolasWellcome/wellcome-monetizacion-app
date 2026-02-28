@@ -15,18 +15,18 @@ def _build_listings_df(raw: pd.DataFrame) -> pd.DataFrame:
     al schema de la tabla 'listings' de la DB.
     """
     col_map = {
-        "_id":              "id",
-        "nickname":         "nickname",
-        "title":            "title",
-        "bedrooms":         "bedrooms",
-        "bathrooms":        "bathrooms",
-        "roomType":         "room_type",
-        "type":             "type",
-        "personCapacity":   "person_capacity",
-        "address.city":     "city",
-        "address.street":   "street",
-        "listed":           "listed",
-        "active":           "active",
+        "_id":          "id",
+        "nickname":     "nickname",
+        "title":        "title",
+        "bedrooms":     "bedrooms",
+        "bathrooms":    "bathrooms",
+        "roomType":     "room_type",
+        "propertyType": "type",
+        "accommodates": "accommodates",
+        "address.city":    "city",
+        "address.street":  "street",
+        "isListed":     "islisted",
+        "active":       "active",
     }
 
     df = raw.rename(columns=col_map)
@@ -42,7 +42,7 @@ def _build_listings_df(raw: pd.DataFrame) -> pd.DataFrame:
         df["thumbnail"] = ""
 
     keep = ["id", "nickname", "title", "bedrooms", "bathrooms", "room_type",
-            "type", "person_capacity", "city", "street", "listed", "active", "thumbnail"]
+            "type", "accommodates", "city", "street", "islisted", "active", "thumbnail"]
     existing = [c for c in keep if c in df.columns]
     return df[existing].copy()
 
@@ -146,10 +146,10 @@ def run():
     elif show_active == "Inactivas" and "active" in filtered.columns:
         filtered = filtered[filtered["active"] != True]
 
-    if show_listed == "Publicadas" and "listed" in filtered.columns:
-        filtered = filtered[filtered["listed"] == True]
-    elif show_listed == "No publicadas" and "listed" in filtered.columns:
-        filtered = filtered[filtered["listed"] != True]
+    if show_listed == "Publicadas" and "islisted" in filtered.columns:
+        filtered = filtered[filtered["islisted"] == True]
+    elif show_listed == "No publicadas" and "islisted" in filtered.columns:
+        filtered = filtered[filtered["islisted"] != True]
 
     if tipo_sel != "Todos" and "room_type" in filtered.columns:
         filtered = filtered[filtered["room_type"] == tipo_sel]
@@ -163,7 +163,7 @@ def run():
     )
     col3.metric(
         "Publicadas",
-        int(df["listed"].sum()) if "listed" in df.columns else "—"
+        int(df["islisted"].sum()) if "islisted" in df.columns else "—"
     )
     col4.metric("Filtradas", len(filtered))
 
@@ -171,14 +171,14 @@ def run():
 
     # ── Tabla principal ───────────────────────────────────────────────────────
     display_cols_map = {
-        "nickname":         "Nombre",
-        "room_type":        "Tipo",
-        "bedrooms":         "Hab.",
-        "bathrooms":        "Baños",
-        "person_capacity":  "Cap.",
-        "city":             "Ciudad",
-        "active":           "Activa",
-        "listed":           "Publicada",
+        "nickname":     "Nombre",
+        "room_type":    "Tipo",
+        "bedrooms":     "Hab.",
+        "bathrooms":    "Baños",
+        "accommodates": "Cap.",
+        "city":         "Ciudad",
+        "active":       "Activa",
+        "islisted":     "Publicada",
     }
     display_cols = [c for c in display_cols_map if c in filtered.columns]
     display_df = filtered[display_cols].rename(columns=display_cols_map).reset_index(drop=True)
@@ -214,13 +214,13 @@ def run():
             with c2:
                 st.markdown(f"**{row.get('nickname', '—')}**")
                 fields = [
-                    ("ID Guesty",      "id"),
-                    ("Título",         "title"),
-                    ("Tipo",           "room_type"),
-                    ("Hab. / Baños",   None),
-                    ("Capacidad",      "person_capacity"),
-                    ("Ciudad",         "city"),
-                    ("Dirección",      "street"),
+                    ("ID Guesty",  "id"),
+                    ("Título",     "title"),
+                    ("Tipo",       "room_type"),
+                    ("Hab. / Baños", None),
+                    ("Capacidad",  "accommodates"),
+                    ("Ciudad",     "city"),
+                    ("Dirección",  "street"),
                 ]
                 for label, key in fields:
                     if key is None:
