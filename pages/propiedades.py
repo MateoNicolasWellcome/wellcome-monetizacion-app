@@ -1,8 +1,9 @@
 import pandas as pd
 import streamlit as st
 
-from services.database import init_db, upsert_listings, read_table, is_stale
-from services.guesty_api import get_guesty_token, GuestyAuthError
+from services.client_config import get_active_config
+from services.database import init_db, upsert_listings, read_table
+from services.guesty_api import get_guesty_token
 from services.guesty_client import GuestyClient, GuestyAPIError
 
 
@@ -47,9 +48,12 @@ def _build_listings_df(raw: pd.DataFrame) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600)
-def _fetch_and_store_listings() -> pd.DataFrame:
+def _fetch_and_store_listings(client_id: str, client_id_env: str,
+                               client_secret_env: str) -> pd.DataFrame:
     """Obtiene listings desde Guesty, los guarda en DB y retorna el DataFrame."""
-    token = get_guesty_token()
+    token = get_guesty_token(client_id, client_id_env, client_secret_env)
+    if not token:
+        return pd.DataFrame()
     client = GuestyClient(token)
     raw = client.get_listings()
     if raw.empty:
@@ -59,24 +63,20 @@ def _fetch_and_store_listings() -> pd.DataFrame:
     return listings_df
 
 
-def _load_listings() -> pd.DataFrame:
+def _load_listings(client_id: str, client_id_env: str,
+                    client_secret_env: str) -> pd.DataFrame:
     """
     Carga listings desde la DB si están frescos; si no, refresca desde Guesty.
-    Usa is_stale con TTL de 1h basado en el primer registro de la tabla.
     """
-    # Revisar si hay datos frescos en la DB
     db_df = read_table("listings")
-    if not db_df.empty:
-        # Considerar la tabla fresca si el registro más antiguo tiene < 1h
-        if "fetched_at" in db_df.columns:
-            oldest = pd.to_datetime(db_df["fetched_at"]).min()
-            age_hours = (pd.Timestamp.utcnow().replace(tzinfo=None) -
-                         oldest.replace(tzinfo=None)).total_seconds() / 3600
-            if age_hours < 1.0:
-                return db_df
+    if not db_df.empty and "fetched_at" in db_df.columns:
+        oldest = pd.to_datetime(db_df["fetched_at"]).min()
+        age_hours = (pd.Timestamp.utcnow().replace(tzinfo=None) -
+                     oldest.replace(tzinfo=None)).total_seconds() / 3600
+        if age_hours < 1.0:
+            return db_df
 
-    # Datos stale o tabla vacía → refrescar desde API
-    return _fetch_and_store_listings()
+    return _fetch_and_store_listings(client_id, client_id_env, client_secret_env)
 
 
 # ── Página principal ──────────────────────────────────────────────────────────
@@ -87,13 +87,17 @@ def run():
 
     init_db()
 
+    config = get_active_config()
+    gc = config.guesty
+
     # Cargar datos
     with st.spinner("Cargando propiedades desde Guesty..."):
         try:
-            df = _load_listings()
-        except GuestyAuthError as e:
-            st.error(f"Error de autenticación: {e}")
-            st.stop()
+            df = _load_listings(
+                config.client_id,
+                gc.client_id_env_var,
+                gc.client_secret_env_var,
+            )
         except GuestyAPIError as e:
             st.error(f"Error de la API de Guesty: {e}")
             st.stop()
@@ -101,8 +105,12 @@ def run():
             st.error(f"Error inesperado: {e}")
             st.stop()
 
+    if df is None or (hasattr(df, 'empty') and df.empty):
+        st.error("No se pudo obtener token de Guesty. Verifica las credenciales.")
+        st.stop()
+
     if df.empty:
-        st.warning("No se encontraron propiedades.")
+        st.warning("No se encontraron propiedades en Guesty.")
         st.stop()
 
     # ── Sidebar: filtros ──────────────────────────────────────────────────────

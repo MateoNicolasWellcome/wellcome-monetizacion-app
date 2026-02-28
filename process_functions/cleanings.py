@@ -85,22 +85,4 @@ def run_frecuency(file_checkIn_path, file_checkOut_path, columns, selected_col1,
     return create_bydate_reservations(ci, co, config)
 
 
-def open_csv_files():
-    """
-    Configuration and execution function.
-    """
-    file_check_in = r"C:\Users\Wellcome\PycharmProjects\dailyPayments\files_frecuency\new_bogota\checkin_bog.csv"
-    file_check_out = "./files_frecuency/new_bogota/checkout_bog.csv"
-
-    # These columns help the script decide which naming convention to use
-    columns = ['CONFIRMATION CODE', 'CHECK-IN DATE', 'LISTING\'S NICKNAME']
-
-    reservations = run_frecuency(
-        file_check_in,
-        file_check_out,
-        columns,
-        'CHECK-IN DATE',
-        'CHECK-OUT DATE'
-    )
-    return reservations
 

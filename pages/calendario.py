@@ -2,8 +2,9 @@ import datetime
 import pandas as pd
 import streamlit as st
 
+from services.client_config import get_active_config
 from services.database import init_db, upsert_calendar_slots, read_table
-from services.guesty_api import get_guesty_token, GuestyAuthError
+from services.guesty_api import get_guesty_token
 from services.guesty_client import GuestyClient, GuestyAPIError
 
 
@@ -33,9 +34,13 @@ def _build_calendar_df(raw: pd.DataFrame, listing_id: str) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=1800)
-def _fetch_calendar(listing_id: str, start: str, end: str) -> pd.DataFrame:
+def _fetch_calendar(listing_id: str, start: str, end: str,
+                    client_id: str, client_id_env: str,
+                    client_secret_env: str) -> pd.DataFrame:
     """Obtiene el calendario desde Guesty, guarda en DB y retorna el DataFrame."""
-    token = get_guesty_token()
+    token = get_guesty_token(client_id, client_id_env, client_secret_env)
+    if not token:
+        return pd.DataFrame()
     client = GuestyClient(token)
     raw = client.get_calendar(listing_id, start, end)
     if raw.empty:
@@ -84,6 +89,9 @@ def run():
 
     init_db()
 
+    config = get_active_config()
+    gc = config.guesty
+
     # ── Sidebar ───────────────────────────────────────────────────────────────
     with st.sidebar:
         st.markdown("### Configuración")
@@ -129,16 +137,20 @@ def run():
                 listing_id,
                 start_date.strftime("%Y-%m-%d"),
                 end_date.strftime("%Y-%m-%d"),
+                config.client_id,
+                gc.client_id_env_var,
+                gc.client_secret_env_var,
             )
-        except GuestyAuthError as e:
-            st.error(f"Error de autenticación: {e}")
-            st.stop()
         except GuestyAPIError as e:
             st.error(f"Error al obtener calendario de Guesty: {e}")
             st.stop()
         except Exception as e:
             st.error(f"Error inesperado: {e}")
             st.stop()
+
+    if cal_df is None or (hasattr(cal_df, 'empty') and cal_df.empty and listing_id):
+        st.error("No se pudo obtener token de Guesty o el calendario está vacío.")
+        st.stop()
 
     if cal_df.empty:
         st.warning("No hay datos de calendario para esta propiedad en el rango seleccionado.")

@@ -4,8 +4,9 @@ import io
 import pandas as pd
 import streamlit as st
 
+from services.client_config import get_active_config
 from services.database import init_db, upsert_reservations, read_table
-from services.guesty_api import get_guesty_token, GuestyAuthError
+from services.guesty_api import get_guesty_token
 from services.guesty_client import GuestyClient, GuestyAPIError
 
 
@@ -52,13 +53,16 @@ def _build_reservations_df(raw: pd.DataFrame) -> pd.DataFrame:
 
 @st.cache_data(ttl=3600)
 def _fetch_reservations(check_in_from: str, check_in_to: str,
-                         statuses_key: str) -> pd.DataFrame:
+                         statuses_key: str, client_id: str,
+                         client_id_env: str, client_secret_env: str) -> pd.DataFrame:
     """
     Obtiene reservas desde Guesty (con caché por rango de fechas),
     las guarda en DB y retorna el DataFrame normalizado.
     statuses_key es un string para que @st.cache_data pueda hashear la lista.
     """
-    token = get_guesty_token()
+    token = get_guesty_token(client_id, client_id_env, client_secret_env)
+    if not token:
+        return pd.DataFrame()
     client = GuestyClient(token)
     statuses = statuses_key.split(",") if statuses_key else None
     raw = client.get_reservations(
@@ -74,30 +78,30 @@ def _fetch_reservations(check_in_from: str, check_in_to: str,
     return df
 
 
-def _load_reservations(check_in_from: str, check_in_to: str) -> pd.DataFrame:
+def _load_reservations(check_in_from: str, check_in_to: str,
+                        client_id: str, client_id_env: str,
+                        client_secret_env: str) -> pd.DataFrame:
     """
     Carga reservas: primero intenta la DB (si hay datos del rango),
     si no refresca desde la API.
     """
-    # Intentar leer de DB primero para el rango
     db_df = read_table(
         "reservations",
         where="check_in >= :from_date AND check_in <= :to_date",
         params={"from_date": check_in_from, "to_date": check_in_to},
     )
 
-    if not db_df.empty:
-        if "fetched_at" in db_df.columns:
-            oldest = pd.to_datetime(db_df["fetched_at"]).min()
-            age_hours = (pd.Timestamp.utcnow().replace(tzinfo=None) -
-                         oldest.replace(tzinfo=None)).total_seconds() / 3600
-            if age_hours < 1.0:
-                return db_df
+    if not db_df.empty and "fetched_at" in db_df.columns:
+        oldest = pd.to_datetime(db_df["fetched_at"]).min()
+        age_hours = (pd.Timestamp.utcnow().replace(tzinfo=None) -
+                     oldest.replace(tzinfo=None)).total_seconds() / 3600
+        if age_hours < 1.0:
+            return db_df
 
-    # Stale o vacío → refrescar
     return _fetch_reservations(
         check_in_from, check_in_to,
         "confirmed,checked_out",
+        client_id, client_id_env, client_secret_env,
     )
 
 
@@ -108,6 +112,9 @@ def run():
     st.caption("Análisis de revenue basado en reservas de Guesty")
 
     init_db()
+
+    config = get_active_config()
+    gc = config.guesty
 
     # ── Sidebar: filtros ──────────────────────────────────────────────────────
     with st.sidebar:
@@ -134,10 +141,10 @@ def run():
             df = _load_reservations(
                 start_date.strftime("%Y-%m-%d"),
                 end_date.strftime("%Y-%m-%d"),
+                config.client_id,
+                gc.client_id_env_var,
+                gc.client_secret_env_var,
             )
-        except GuestyAuthError as e:
-            st.error(f"Error de autenticación: {e}")
-            st.stop()
         except GuestyAPIError as e:
             st.error(f"Error de la API de Guesty: {e}")
             st.stop()
@@ -145,9 +152,14 @@ def run():
             st.error(f"Error inesperado: {e}")
             st.stop()
 
+    if df is None or (hasattr(df, 'empty') and df.empty):
+        st.error("No se pudo obtener token de Guesty o no hay reservas en ese rango.")
+        st.stop()
+
     if df.empty:
         st.warning("No se encontraron reservas para el período seleccionado.")
         st.stop()
+
 
     # Normalizar tipos
     df["check_in"]  = pd.to_datetime(df["check_in"],  errors="coerce")

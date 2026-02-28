@@ -1,50 +1,63 @@
-"""
-services/guesty_view_endpoint.py
-─────────────────────────────────
-Configuración de las vistas de Guesty utilizadas por el plan de limpiezas.
-
-Las vistas ("reservations-reports") son filtros guardados en Guesty que
-pre-seleccionan reservas según criterios específicos (check-ins o check-outs
-en Bogotá, propiedades activas, etc.).
-
-Para agregar una nueva vista:
-  1. Crear el filtro en Guesty → Reservations → Reports → Save view
-  2. Copiar el ID desde la URL y agregar una constante aquí
-  3. Crear una función get_*_data() que use client.get_reservations_view()
-"""
-
 import pandas as pd
-
-from services.guesty_client import GuestyClient
-
-# ── IDs de vistas guardadas en Guesty ─────────────────────────────────────────
-VIEW_ID_IN  = "67e4662ff62c503d30ac4b65"   # Check-ins Bogotá
-VIEW_ID_OUT = "66e99b9d462a960d2e7ac304"   # Check-outs Bogotá
+import streamlit as st
+import requests
+from services import guesty_api
 
 
-# ── Funciones de acceso ───────────────────────────────────────────────────────
+@st.cache_data(ttl=3600)
+def fetch_guesty_reservations(view_id, token, timezone="America/Bogota"):
+    """Fetch all reservations from a Guesty view, handling pagination."""
+    base_url = "https://open-api.guesty.com/v1/reservations-reports"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "accept": "application/json; charset=utf-8",
+    }
+    params = {
+        'active': True,
+        'limit': 100,
+        'skip': 0,
+        'timezone': timezone,
+    }
+    all_rows = []
+    try:
+        response = requests.get(f"{base_url}/{view_id}", headers=headers, params=params)
+        response.raise_for_status()
+        data = response.json()
+        total_records = data.get('total', 0)
+        all_rows.extend(data.get('results', []))
 
-def get_checkin_data(client: GuestyClient) -> pd.DataFrame:
+        if total_records > 100:
+            for skip in range(100, total_records, 100):
+                params['skip'] = skip
+                resp = requests.get(f"{base_url}/{view_id}", headers=headers, params=params)
+                resp.raise_for_status()
+                all_rows.extend(resp.json().get('results', []))
+
+        return pd.DataFrame(all_rows)
+    except requests.exceptions.RequestException as e:
+        st.error(f"Error fetching data from Guesty: {e}")
+        return pd.DataFrame()
+
+
+def load_checkin_checkout(
+    client_id: str,
+    client_id_env_var: str,
+    client_secret_env_var: str,
+    view_id_checkin: str,
+    view_id_checkout: str,
+    timezone: str = "America/Bogota",
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Reservas con check-in próximo (vista de check-ins Bogotá).
-
-    Args:
-        client: instancia de GuestyClient con token válido
-
-    Returns:
-        DataFrame con columnas de la vista (checkInDate, listing.nickname, etc.)
+    Load check-in and check-out data for a specific client.
+    Returns (c_in, c_out) DataFrames.
     """
-    return client.get_reservations_view(VIEW_ID_IN)
+    token = guesty_api.get_guesty_token(
+        client_id, client_id_env_var, client_secret_env_var
+    )
+    if not token:
+        st.error("Could not obtain Guesty token.")
+        return pd.DataFrame(), pd.DataFrame()
 
-
-def get_checkout_data(client: GuestyClient) -> pd.DataFrame:
-    """
-    Reservas con check-out próximo (vista de check-outs Bogotá).
-
-    Args:
-        client: instancia de GuestyClient con token válido
-
-    Returns:
-        DataFrame con columnas de la vista (checkOutDate, listing.nickname, etc.)
-    """
-    return client.get_reservations_view(VIEW_ID_OUT)
+    c_in = fetch_guesty_reservations(view_id_checkin, token, timezone)
+    c_out = fetch_guesty_reservations(view_id_checkout, token, timezone)
+    return c_in, c_out
