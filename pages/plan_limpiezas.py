@@ -84,6 +84,14 @@ def run():
 
         return staff_priority, staff_additional, staff_total
 
+    # --- Data Source Selector ---
+    data_source = st.radio(
+        "Fuente de datos",
+        ["API (Guesty)", "CSV Upload"],
+        horizontal=True,
+        help="Usa la API para datos en tiempo real, o sube CSVs para analisis particular"
+    )
+
     # --- Data Loading (Cached) ---
     @st.cache_data(ttl=3600)
     def load_data(_client_id, _view_ci, _view_co, _ci_env, _cs_env, _tz):
@@ -103,16 +111,43 @@ def run():
             st.error(f"Error cargando datos: {str(e)}")
             return None
 
+    def load_csv_data(file_ci, file_co):
+        """Process two uploaded CSV files (check-in and check-out)."""
+        try:
+            df_ci = pd.read_csv(file_ci)
+            df_co = pd.read_csv(file_co)
+            columns = df_ci.columns.tolist()
+            data = fc.run_frecuency(
+                df_ci, df_co,
+                columns, "CHECK-IN DATE", "CHECK-OUT DATE"
+            )
+            return data
+        except Exception as e:
+            st.error(f"Error procesando CSV: {str(e)}")
+            return None
+
     # --- Load and Filter Data ---
-    with st.spinner("Cargando datos..."):
-        reservations_raw = load_data(
-            config.client_id,
-            gc.view_id_checkin,
-            gc.view_id_checkout,
-            gc.client_id_env_var,
-            gc.client_secret_env_var,
-            gc.timezone,
-        )
+    if data_source == "API (Guesty)":
+        with st.spinner("Cargando datos desde Guesty..."):
+            reservations_raw = load_data(
+                config.client_id,
+                gc.view_id_checkin,
+                gc.view_id_checkout,
+                gc.client_id_env_var,
+                gc.client_secret_env_var,
+                gc.timezone,
+            )
+    else:
+        col_up1, col_up2 = st.columns(2)
+        with col_up1:
+            csv_ci = st.file_uploader("CSV Check-Ins", type=["csv"], key="csv_ci")
+        with col_up2:
+            csv_co = st.file_uploader("CSV Check-Outs", type=["csv"], key="csv_co")
+        if csv_ci is not None and csv_co is not None:
+            reservations_raw = load_csv_data(csv_ci, csv_co)
+        else:
+            st.info("Sube ambos archivos CSV (Check-Ins y Check-Outs) para comenzar el analisis.")
+            st.stop()
 
     if reservations_raw is None or reservations_raw.empty:
         st.error("No se pudieron cargar los datos. Verifica la conexion o los archivos fuente.")
