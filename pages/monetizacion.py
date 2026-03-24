@@ -614,7 +614,7 @@ def run():
                 "Monto": st.column_config.NumberColumn("Monto COP", format="%.0f"),
                 "Total pagado": st.column_config.NumberColumn("Total USD", format="%.2f"),
                 "Fecha": st.column_config.TextColumn("Fecha"),
-                "Cantidad reservas": st.column_config.TextColumn("# Reservas"),
+                "Cantidad reservas": st.column_config.NumberColumn("# Reservas", format="%d"),
                 "fuente": st.column_config.TextColumn("Fuente"),
             },
             num_rows="fixed",
